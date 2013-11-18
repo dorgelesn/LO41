@@ -1,0 +1,204 @@
+\documentclass{report}
+
+\usepackage[francais]{babel}
+\usepackage[utf8x]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[final]{pdfpages}
+\usepackage{graphicx}
+\usepackage{array}
+\usepackage{eurosym}
+\usepackage{listings}
+
+\title{Université de Technologie Belfort-Montbéliard\\
+Projet LO41\\
+Centre d'appels}
+\author{Guillaume OBERLE\\
+Alexandre THIERIOT}
+
+\lstdefinestyle{customc}{
+  belowcaptionskip=1\baselineskip,
+  xleftmargin=\parindent,
+  language=C,
+  showstringspaces=false,
+  basicstyle=\footnotesize\ttfamily,
+  keywordstyle=\bfseries\color{green!35!black},
+  commentstyle=\itshape\color{purple!30!black},
+  identifierstyle=\color{blue},
+  stringstyle=\color{orange},
+}
+
+\lstset{escapechar=@,style=customc}
+
+\begin{document}
+
+\input{title.tex}
+
+\maketitle
+
+\tableofcontents
+
+\chapter{Introduction}
+	\paragraph{}
+		Dans le cadre de l'UV LO41 : Architecture et utilisation des systèmes d'exploitation, nous avons travaillé sur la conception d'un projet qui a pour objectif de simuler un centre d'appel téléphonique. Les connaissances acquises depuis le début de cette UV nous ont permi de concevoir cette simulation avec la programmation système.
+	\paragraph{}
+		Un centre d'appel est un ensemble de moyens, humains, immobiliers, mobiliers et techniques, qui permet de prendre en charge la relation à distance entre une marque et son marché. Dans le cadre ce projet, nous n'étudierons que l'aspect technique de la mise en place d'un centre d'appel, et plus précisement le fonctionnement de la mise en relation d'un client avec un agent.
+	\paragraph{}
+		Le développement de notre rapport sera divisé en trois parties. Dans un premier temps, nous présenterons le cahier des charges. Puis dans un second temps, notre présenterons les différents programmes qui composent notre projet. Et enfin, dans un dernier temps, nous expliquerons comment ces différents programmes intéragissent entre eux.
+
+\chapter{Présentation du cahier des charges}
+	\paragraph{}
+	L'énoncé du problème est le suivant:
+	\paragraph{}
+		Ce projet doit être réalisé en C sous environnement OpenSolaris. Un centre d'appels a pour fonction de répondre aux demandes d'informations du public. Pour se faire, un numéro est donc mis à disposition du public et plusieurs opérateurs ont la charge de traiter les appels. Trois cas de figures peuvent se présenter :
+	\paragraph{}
+		\begin{itemize}
+			\item Il y a au moins un opérateur disponible. L'appel va donc être traité immédiatement.
+			\item Il n'y a pas d'opérateur de libre, mais on estime que l'attente prévisible est acceptable. On va donc faire patienter le client jusqu'à ce que l’opérateur se libère.
+			\item Il n'y a pas d’opérateur de libre et on estime que l'attente prévisible n'est pas acceptable. On va donc dissuader l'appel. Le client sera informé par un message vocal que son appel ne peut pas être traité et il sera donc invité à rappeler ultérieurement.
+		\end{itemize}
+	\paragraph{}
+		Nous considérons un pilote comme étant l'entité qui gère un numéro de téléphone unique. Cette entité servira à placer un appel qu'il reçoit dans une file d'attente avant qu'un opérateur prenne en charge l'appel. Un groupe de traitement rassemble plusieurs opérateurs que nous appelerons agents. Un groupe de traitement appartient à un service. Il prendra en priorité les appels destinés à son service (c'est à dire les appels chez un pilote spécifique) mais pourra également s'occuper des appels appartenant à un service autre que le sien si celui-ci ne reçoit plus d'appel sur son service.
+	\paragraph{}
+<<<<<<< HEAD
+		Prenons par exemple un agent appartenant au service commercial d'une entreprise. Le service commercial peut également s'occuper des appels destinés au service résiliation (en effet ce service fait en effet également appel à des compétences commerciales). C'est pourquoi lorsque cet agent ne recevra plus d'appel à son service initial, celui-ci pourra aider les agents du service résiliation en leur prennant quelques appels. Lorsque de nouveaux appels destinés au service commercial referont surface, cet agent pourra reprendre ces appels.
+=======
+		Prenons par exemple un agent appartenant au service commercial d'une entreprise. Le service commercial peut également s'occuper des appels destinés au service résiliation ( ce service fait en effet également appel à des compétences commerciales ). C'est pourquoi lorsque cet agent ne recevra plus d'appel sur son service initial, celui-ci pourra aider les agents du service résiliation en leur prennant quelques appels. Lorsque de nouveaux appels destinés au service commercial referont surface, cet agent pourra reprendre ces appels.
+>>>>>>> 12fbf8cc27049de976f9333abfd0a730b4128d10
+	\paragraph{}
+		Le nombre de groupes de traitement et de pilotes sera de 64 par défaut mais l'utilisateur pourra également abaisser ce nombre. L'attente d'un appel devra se faire selon le principe "FIFO", c'est à dire que le premier appel arrivant sera le premier pris en charge par les agents.
+
+\chapter{Présentation des acteurs}
+	\section{Central}
+		\paragraph{}
+			Le central a pour objectif de créer et gérer tous les IPCs relatifs au bon fonctionnement des pilotes ainsi que des groupes de traitements. Il va notamment créer un segment de mémoire partagée ainsi que les files de messages utilisées pour la communication inter processus. Le programme permet également de consulter durant son exécution, l'état et le nombre de messages dans la file d'attente ainsi que dans la file de dissuasion. Enfin, il permet de la supprimer lorsque l'utilisateur le souhaite.
+
+	\section{Pilote}
+		\subsection{Présentation des pilotes}
+			Le pilote permet de génèrer à des temps alétoires un appel. Ceci fait référence au fait qu'un appel peut être reçu à un temps incertain. Un appel est caractérisé par le nom de l'appelant, défini comme étant la composition du numéro du pilote et du nombre de messages déjà générés par ce pilote (utilisé à des fin de vérification au bon fonctionnement du programme), le numéro sur lequel celui-ci a appelé (qui se situe entre le numéro +334 50 29 00 et le numéro +334 50 29 63 symbolisant la plage de numéros réservés par l'entreprise) et la durée de son appel, généré aléatoirement. Cet appel est placé dans une file d'attente que nous détaillerons dans les parties suivantes.
+		\subsection{Fonctionnement d'un pilote}
+			Un pilote est considéré comme étant un thread. Tous les pilotes créés sont répertoriés dans un tableau de type pthread\_t de taille nbPilote, le nombre de pilotes que l'on souhaite créer. Chaque thread est exécuté avec la fonction threadPilote.
+
+	\section{Groupe de traitement}
+		\subsection{Présentation d'un groupe de traitement}
+			Un groupe de traitement (GT) est composé d'un ou plusieurs agents dans une limite de 64 agents maximum. Son rôle est de récupérer les appels qui lui correspondent en file d'attente et de les attribuer aux agents disponibles lui appartenant. Pour ce faire, nous avons utilisé l'algorithme du producteur-consomateur vu en cours. Le GT jouant le rôle du producteur et les agents jouant les rôles des consommateurs.  
+		\subsection{Fonctionnement d'un groupe de traitement}
+			Un groupe de traitement est un thread. Ce thread est exécuté grâce à la fonction threadGt. Aprés sa création, celui-ci va s'occuper de créer les threads agents qui lui sont associés et va mettre en oeuvre l'algorithme du producteur-consommateur.
+			\paragraph{Les mutex}
+				Comme présenté précédemment dans la structure d'un GT, chaque GT possède un mutex afin d'éviter que les différents processus souhaitant avoir accès au tampon, que ce soit pour de la lecture ou de l'écriture, ne le fassent en même temps. Tout d'abord, il faut savoir que comme les GT sont placés en mémoire partagée, les tampons de chacun d'entre eux le sont également. Ensuite, tous les threads pilotes peuvent accéder à ce tampon, ainsi qu'évidemment les threads GT et leurs threads agent. C'est pourquoi il faut pouvoir être capable de gérer la concurrence d'accès entre tout ces processus, à ce tampon.
+			\paragraph{Les moniteurs}
+				Afin de gérer les accès concurrents au tampon au sein du GT, nous avons mis en place des moniteurs. Pour mettre en place l'algorithme du producteur/ consommateur, nous avons déclaré dans le GT deux variables de type pthread\_mutex\_t : nonPlein et nonVide. 
+		\subsection{Structure d'un groupe de traitement}
+			\paragraph{}
+				Voici la structure d'un groupe de traitement.
+			\paragraph{}
+				\lstset{language=C}
+				\begin{lstlisting}
+typedef struct Gt_t {
+	pthread_t thread; 		/* ID du thread d'un GT */
+	int msqid;			/* ID de la file d'attente a traiter */
+	int nbFiles;	 		/* Nombre de types de files */
+	int noFiles[NB_FILE]; 		/* Types de files a traiter */
+	int nbAgents; 			/* Nombre d'agents appartenant au GT */
+	agent_t agent[NB_AGENT]; 	/* Agents appartenant au GT */
+	pthread_mutex_t mutex; 		/* Mutex */
+	pthread_cond_t nonPlein; 	/* Condition 1 */
+	pthread_cond_t nonVide; 	/* Condition 2 */
+	int idProd; 			/* Indice du producteur */
+	int idCons; 			/* Indice du consommateur */
+	int nbMsg;			/* Nombre de messages dans le tampon */
+	int sizeTampon; 		/* Taille du tampon */
+	msq_t msqTampon[SIZE_TAMPON]; 	/* Tampon */
+} gt_t;
+				\end{lstlisting}
+		\subsection{Fonctionnement d'un agent}
+			L'agent est un thread qui est créé par le groupe de traitement auquel il appartient. Ce thread est exécuté grâce à la fonction threadAgent. Il joue le rôle du consommateur et possède ainsi deux états : soit il est en attente d'un message, soit il est en train de traiter un message.
+		\subsection{Structure d'un agent}
+			\paragraph{}
+				Voici la structure d'un agent.
+			\paragraph{}
+				\lstset{language=C}
+				\begin{lstlisting}
+typedef struct {
+	int id;			/* ID de l'agent */
+	pthread_t thread;	/* Identifiant du thread d'un agent */
+	struct Gt_t* gt;	/* GT dans lequel se situe l'agent */
+} agent_t;
+				\end{lstlisting}
+	\newpage
+	\section{Réseau de Pétri}
+		\paragraph{}
+			\begin{center}
+				\includegraphics[scale=0.50]{petri.png}
+			\end{center}
+\chapter{Communication inter-processus entre les acteurs}
+	\section{La mémoire partagée}
+		\paragraph{}
+<<<<<<< HEAD
+			La mémoire partagée permet de stocker toute les informations relatives aux groupes de traitements, et notamment les types de files d'attentes qu'ils peuvent traiter. Cette mémoire partagée est utilisée dans le pilote pour rechercher un groupe de traitement disponible et apte a traiter ce type d'appel.
+=======
+			La mémoire partagée permet de stocker toutes les informations relatives aux groupes de traitements, notamment les types de files d'attentes qu'ils peuvent traiter. Cette mémoire partagée est utilisée dans le pilote pour rechercher un groupe de traitement disponible et apte a traiter ce type d'appel.
+>>>>>>> 12fbf8cc27049de976f9333abfd0a730b4128d10
+
+		\subsection{Groupe de traitement}
+			Lors du lancement du processus des groupes de traitement, celui-ci va parser un fichier de configuration qui contient pour chaque GT, le nombre d'agents ainsi que leur file par défaut et leurs files de débordement. Celà permet de configurer à souhait chaque groupe de traitement.
+
+		\subsection{Pilote}
+			Lorsqu'un appel arrive sur un pilote, celui-ci va parcourir les groupes de traitements, via la mémoire partagée, à la recherche d'un qui correspond à son type d'appel. Il cherchera en priorité à savoir si le GT par défaut pour son type d'appel est susceptible de traiter l'appel. Sinon, il partira à la recherche d'un GT de débordement disponible. Si aucun GT n'est disponible, il placera l'appel dans le GT par défaut. Pour connaitre la disponibilité d'un GT, le pilote cherchera à savoir si le tampon (lié à l'algorithme du producteur-consommateur) est plein ou non.
+
+	\section{Les files de messages}
+		\paragraph{}
+<<<<<<< HEAD
+			Afin de gérer le traitement des appels, l'utilisation des files de message correspondait parfaitement au cahier des charges. Tout d'abord, le fonctionnement en FIFO de la file de message, c'est à dire du "premier arrivé, premier servi" permet à la file de message d'être utilisée en tant que file d'attente. De plus la file de message nous permet de gérer très facilement la redirection des appels vers la file de dissuasion. En effet, pour ajouter un appel dans la file d'attente, si la file de message principale (la file d'attente) est pleine, l'appel sera donc redirigé vers la file de dissuasion. Le fonctionnement de la file de dissuasion marche de la même manière que la file d'attente. Lorsque les deux files sont pleines, l'appel sera rejeté. La file de message a de plus l'avantage de gérer par défaut les priorités.
+=======
+			Afin de gérer le traitement des appels, l'utilisation des files de message correspondait parfaitement au cahier des charges. Tout d'abord, le fonctionnement en FIFO de la file de message, c'est à dire du "premier arrivé, premier servi" permet à la file de message d'être utilisée en tant que file d'attente. De plus la file de message nous permet de gérer très facilement la redirection des appels vers la file de dissuasion. En effet, pour ajouter un appel dans la file d'attente, si la file de message principale ( la file d'attente ) est pleine, l'appel sera donc redirigé vers la file de dissuasion. Le fonctionnement de la file de dissuasion marche de la même manière que la file d'attente. Lorsque les deux files sont pleines, l'appel sera rejeté. La file de message a de plus l'avantage de gérer par défaut les priorités.
+
+		\subsection{Le central}
+			\paragraph{}
+				Le central créer deux files de message. Celles-ci sont créées grâce à la fonction createMsq qui prend comme paramètre 0 pour la file de messages destinée à la file d'attente et 1 pour la file de messages destinée à la file de dissuasion.
+>>>>>>> 12fbf8cc27049de976f9333abfd0a730b4128d10
+
+		\subsection{Le pilote}
+			\paragraph{}
+				Les pilotes envoient des messages dans la file de message.
+
+		\subsection{Présentation du scheduler}
+			\paragraph{}
+				Le scheduler cherche un message de son type pour le mettre dans le tampon grâce à la fonction rcvMsq. S'il ne trouve pas de message de son type, il reste bloqué jusqu'à ce qu'un message de son type est envoyé dans la file de message. S'il trouve un message dans la file de message, il le place dans un tampon avant d'essayer d'en reprendre un nouveau.
+
+\chapter{Conclusion}
+	\section{Problèmes rencontrés}
+		\paragraph{}
+			Il ne nous a pas été possible de créer au moins 64 agents par GT. En effet, le système de fichier est limité à un certain nombre de thread et de processus. C'est pourquoi nous avons choisi de conserver les 64 GT mais nous avons été contraint de réduire le nombre d'agent par GT de 64 à environ 32.
+
+	\section{Lancement du programme}
+		\paragraph{}
+			Afin d'exécuter le programme, nous avons mis à disposition un fichier de configuration gt\_config qui permet pour chaque ligne (correpondantes a un GT ) de définir ses options de lancement. Une ligne est définie de la manière suivante : [ Nombre d'agents à créer dans le GT ],[ Numero du GT ],[ File de débordement 1 ],[F ile de débordement 2 ],[ File de débordement 3 ],[ File de débordement 4 ],[ File de débordement 5 ]. Afin de pouvoir compiler le programme, un makefile a été fourni.
+			L'utilisateur peut ensuite lancer le programe de la façon suivante:
+			\begin{itemize}
+				\item Exécuter avec ./central
+				\item Exécuter avec ./gt [ Nombre de GT à lancer ] [Nom du fichier de configuration]
+				\item Exécuter avec ./pilote [ Nombre de pilotes à lancer ] [Attente minimum d'un pilote après la transmission d'un appel ] [Attente maximum d'un pilote après transmission d'un appel ] [ Durée minimum d'un appel] [Durée maximum d'un appel].
+			\end{itemize}
+		\paragraph{}
+			Le nombre de pilotes à lancer doit cependant correspondre avec le nombre de GT à lancer. Nous n'avons pas non plus fait de contrôle sur la véracité des données renseignées par l'utilisateur sur le fichier de configuration. 
+
+\chapter{Annexe}
+	\section{Présentation de la bibliothèque libmsq}
+		\paragraph{}
+			Le fichier libmsq.h contient toutes les fonctions utiles à la gestion d'une file de message et aux contrôles des erreurs. 
+			\begin{itemize}
+				\item createMsq est la fonction qui permet de créer la file de message. Elle prend en paramètre un entier et retourne l'identifiant de la file de message ou -1 si l'appel à la fonction msgget n'a pas marché. La fonction fait appel à la fonction msgget paramètré avec le drapeau IPC\_CREAT.
+				\item deleteMsq est la fonction qui permet de supprimer une file de message. Elle prend en paramètre l'identifiant de la file de message et renvoie 1 si la suppression a fonctionné, -1 sinon. La fonction fait appel à la fonction msgctl paramètrée avec le drapeau IPC\_RMID.
+				\item connectMsq est la fonction qui permet à un processus ou un thread de se connecter à une file de message existante. Elle prend en paramètre un entier et renvoie le numéro de la file de message correspondante.La fonction fait appel à la fonction msgget paramètrée avec le drapeau IPC\_EXCL.
+				\item sendMsq est la fonction qui permet d'envoyer un message vers la file de message. Elle renvoie 1 si l'envoi a marché, -1 sinon. La fonction fait appel à la fonction msgsnd paramètrée avec le drapeau IPC\_NO\_WAIT. Ce drapeau permet à msgsnd ne pas rester bloquer si la file de messag est pleine( en effet par défaut, msgsnd attendra qu'une place dans la file de mesage se libère ). Si la file de message est pleine, msgsnd renverra -1 et errno sera égal à EAGAIN.
+				\item rcvMsq est la fonction utilisée pour récupérer un message situé dans la file de message. Elle renvoie 1 si la récupération a fonctionné et est bloqué si la file de message est vide. Elle envoie un message d'erreur si l'envoie a échoué. La fonction fait appel à la fonction msgrcv qui est bloquante si la file de message est vide.
+			\end{itemize}
+	\section{Présentation de la bibliothèque libshm}
+			\paragraph{}
+				\begin{itemize}
+					\item createShm est la fonction qui permet de créer un segment de mémoire partagée. Elle renvoie l'identifiant du segment si la création a réussi, -1 sinon. La fonction fait appel à la fonction shmget avec le drapeau IPC\_CREAT afin de créer le segment. 
+					\item int deleteShm est la fcontion qui permet de supprimer un segment de mémoire partagée. La fonction renvoie 1 si la suppression a fonctionné, -1 sinon. Celle-ci utilise la fonction shmctl avec le drapeau IPC\_RMID afin du supprimer le segment.
+					\item int connectShm est la fonction qui permet à un processus de connaitre l'identifiant d'un segment de mémoire partagée déjà créé. Elle renvoie l'identifiant du segment si celle-ci a réussi, -1 sinon. La fonction fait appel à la fonction shmget associée au drapeau IP\_EXECL.
+				\end{itemize}
+
+\end{document}
